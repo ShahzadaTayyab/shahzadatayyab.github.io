@@ -81,6 +81,7 @@ body.loaded #chrome{opacity:1}
 .dim{position:absolute;inset:0;visibility:hidden;pointer-events:none;display:flex;
   align-items:center;justify-content:center}
 .dim.active{visibility:visible;pointer-events:auto}
+#stage.xfer .dim.active{opacity:0}
 .inner{width:100%;max-width:1150px;padding:90px 6vw;will-change:transform}
 #stage.leaving .dim.active .inner{transform:scale(.93);filter:blur(4px);opacity:.4;
   transition:transform .5s ease,filter .5s ease,opacity .5s ease}
@@ -406,7 +407,10 @@ body.loaded #chrome{opacity:1}
 ================================================================== */
 const canvas=document.getElementById('bg');
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'});
-let PR=Math.min(devicePixelRatio,innerWidth<820?1.6:2);
+/* pixel ratio is capped by total pixel count, so a huge window never costs more than a small one */
+function calcPR(){return Math.max(1,Math.min(devicePixelRatio,innerWidth<820?1.6:2,
+  Math.sqrt(3.2e6/(innerWidth*innerHeight))))}
+let PR=calcPR();
 renderer.setPixelRatio(PR);
 renderer.setSize(innerWidth,innerHeight);
 const camera=new THREE.PerspectiveCamera(62,innerWidth/innerHeight,.1,800);
@@ -728,11 +732,11 @@ const stage=document.getElementById('stage'),
 
 function riftSpark(){
   const o=Math.max(0,(tp-MID)/(1-MID));
-  const y=innerHeight/2+(Math.random()<.5?-1:1)*o*innerHeight*.65;
+  const a=Math.random()*6.283,rad=(.08+o*.5)*Math.min(innerWidth,innerHeight)*(.7+Math.random()*.5);
   const s=document.createElement('i');s.className='rspark';
-  s.style.left=(Math.random()*innerWidth)+'px';s.style.top=y+'px';
-  s.style.setProperty('--sx',((Math.random()-.5)*90)+'px');
-  s.style.setProperty('--sy',((Math.random()<.5?-1:1)*(20+Math.random()*55))+'px');
+  s.style.left=(innerWidth/2+Math.cos(a)*rad)+'px';s.style.top=(innerHeight/2+Math.sin(a)*rad)+'px';
+  s.style.setProperty('--sx',(Math.cos(a)*(40+Math.random()*90))+'px');
+  s.style.setProperty('--sy',(Math.sin(a)*(40+Math.random()*90))+'px');
   document.body.appendChild(s);setTimeout(()=>s.remove(),700);
 }
 
@@ -773,36 +777,20 @@ function activate(n,fast){
 }
 function snapCam(n){entryT=clock.elapsedTime}
 
-function enterMid(){
+function enterMid(){                 /* the glass is fully cracked: the HUD takes the next world's colours */
   if(splitOn)return;splitOn=true;
-  const from=cur;
-  const inner=sections[from].querySelector('.inner');
-  if(inner)inner.style.cssText='';
-  splitLayer.innerHTML='';
-  ['top','bot'].forEach(cls=>{
-    const h=document.createElement('div');h.className='half '+cls;
-    const c=sections[from].cloneNode(true);
-    c.querySelectorAll('.el').forEach(el=>{el.style.animation='none';el.style.opacity=1;el.style.transform='none'});
-    c.querySelectorAll('[id]').forEach(el=>el.removeAttribute('id'));
-    h.appendChild(c);splitLayer.appendChild(h);
-  });
-  splitLayer.classList.add('on');
-  sections[from].classList.remove('active','in','fast');
-  renderWorld=nextDim;
   applyTheme(nextDim);
   fovPulse=1;
 }
 function exitMid(){
   if(!splitOn)return;splitOn=false;
-  splitLayer.classList.remove('on');splitLayer.innerHTML='';
-  renderWorld=cur;
   applyTheme(cur);
-  activate(cur,false);
 }
 const stinger=document.getElementById('stinger');
 function complete(){
-  splitOn=false;splitLayer.classList.remove('on');splitLayer.innerHTML='';
+  splitOn=false;
   cur=nextDim;renderWorld=cur;
+  stage.classList.remove('xfer');xferOn=false;
   stinger.textContent=JPN[cur];
   stinger.classList.remove('go');void stinger.offsetWidth;stinger.classList.add('go');
   const fl=document.getElementById('dimFlash');
@@ -810,6 +798,7 @@ function complete(){
   setChrome(cur);activate(cur,true);
   tp=0;dir=0;target=null;autoTween=false;timeScale=1;fovPulse=.6;tpMom=0;
   coolUntil=performance.now()+450;
+  queueSnap(750);
 }
 function go(n){
   if(busy||autoTween||n===cur||n<0||n>=worlds.length||performance.now()<coolUntil)return;
@@ -856,7 +845,7 @@ addEventListener('keydown',e=>{
   const CMDS={
     'help':()=>'commands: whoami · projects · principles · contact · sudo hire-tayyab · matrix · clear · exit — plus a few the void won\'t list.',
     'ls':()=>'matrix/  japan/  orbit/  neon-city/  void/   — 5 dimensions mounted',
-    'date':()=>'temporal anchor unstable — current year: '+[1996,2026,2200][Math.floor(Math.random()*3)]+' (±204)',
+    'date':()=>'temporal anchor unstable — current year: '+[1996,2026,2077][Math.floor(Math.random()*3)]+' (±81)',
     'rm -rf /':()=>'nice try. this reality is read-only.',
     'sudo rm -rf /':()=>'ACCESS DENIED — even sudo fears the void.',
     'linkedin':()=>{window.open('https://www.linkedin.com/in/shahzadatayyab/','_blank');
@@ -890,12 +879,14 @@ addEventListener('keydown',e=>{
     const fn=CMDS[cmd];
     const res=fn?fn():'command not found: '+cmd.replace(/</g,'&lt;')+' — try help';
     if(res){const r=document.createElement('div');r.className='o';r.textContent=res;tout.appendChild(r)}
-    scr.scrollTop=scr.scrollHeight;
+    scr.scrollTop=scr.scrollHeight;domDirty=true;
   });
 })();
 addEventListener('mousemove',e=>{mx=(e.clientX/innerWidth-.5)*2;my=(e.clientY/innerHeight-.5)*2});
 addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;
-  camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});
+  camera.updateProjectionMatrix();
+  if(PR>1){PR=calcPR();renderer.setPixelRatio(PR)}
+  renderer.setSize(innerWidth,innerHeight);sizePost()});
 
 /* ---- transition state machine ---- */
 function engineTick(dtMs){
@@ -930,6 +921,8 @@ function engineTick(dtMs){
       if(splitOn&&now-lastSpark>90){lastSpark=now;riftSpark()}
     }
   }
+  /* momentum already carried you past the midpoint: don't drag the jump backwards */
+  if(target===MID&&tp>=MID)target=tp>=OPEN_END?1:null;
   if(target!==null){
     tp+=(target-tp)*Math.min(1,dtMs*.011);
     if(Math.abs(target-tp)<.005){
@@ -947,55 +940,312 @@ function applyVisual(){
   const a=Math.min(1,tp/STICKY_END);
   const o=splitOn?Math.max(0,(tp-MID)/(1-MID)):0;
   timeScale=splitOn?(.3+o*.7):(1-a*.82);
-  const act=document.querySelector('#stage .dim.active .inner');
-  if(act){
-    act.style.transform='translateY('+((dir||1)*-(tp*250)-bounce*.4)+'px)';
-    act.style.filter='blur('+(a*4.5)+'px)';
+  /* once the glass starts to crack, the HTML layer is handed to the shader as a texture
+     so the words shatter with the world. if the crack heals, the live HTML comes back */
+  const want=dir!==0&&tp>.012;
+  if(want&&!xferOn){
+    if(snapOf!==cur||domDirty||cur===0)snapDom(cur);
+    stage.classList.add('xfer');xferOn=true;
+  }else if(!want&&xferOn){stage.classList.remove('xfer');xferOn=false}
+  if(!xferOn){
+    const act=document.querySelector('#stage .dim.active .inner');
+    if(act){act.style.transform='translateY('+(-bounce*.4)+'px)';act.style.filter=''}
   }
-  if(splitOn&&splitLayer.children.length===2){
-    const px=o*innerHeight*.65;
-    const hs=splitLayer.children;
-    hs[0].style.transform='translateY('+(-px)+'px)';
-    hs[1].style.transform='translateY('+px+'px)';
-    hs[0].style.filter=hs[1].style.filter=
-      'brightness('+(1-o*.3)+') saturate('+(1+o*.5)+') blur('+(o*1.5)+'px)';
-  }
-  riftGlow.style.opacity=splitOn
-    ?String(Math.min(1,.5+o*1.6)*(1-o*.8))
-    :(tp>STICKY_END*.6?String(Math.min(.8,(tp-STICKY_END*.6)*2.2)):'0');
-  riftGlow.style.transform='translateY(-50%) scaleY('+(1+o*34)+')';
   riftWarn.classList.toggle('on',closing&&tp>.18);
 }
 
+/* ============ POST PIPELINE ============
+   every frame is drawn to a texture and finished by one shader: glow, colour fringe, grain.
+   during a jump that same shader cracks the current world from its centre, then throws the
+   shards past the camera, with the next world rendering live behind the glass.
+   nothing rotates — shards only grow as they fly toward you. */
+const ACC=['#4ade80','#f472b6','#60a5fa','#fb7185','#4ade80'];
+const dbs=new THREE.Vector2();
+renderer.getDrawingBufferSize(dbs);
+const GL2=renderer.capabilities.isWebGL2;
+const rtA=GL2?new THREE.WebGLMultisampleRenderTarget(dbs.x,dbs.y):new THREE.WebGLRenderTarget(dbs.x,dbs.y);
+const rtB=new THREE.WebGLRenderTarget(dbs.x,dbs.y);
+const rtC=new THREE.WebGLRenderTarget(dbs.x,dbs.y,{depthBuffer:false});
+[rtA,rtB,rtC].forEach(r=>{r.texture.minFilter=r.texture.magFilter=THREE.LinearFilter;
+  r.texture.generateMipmaps=false});
+const domCv=document.createElement('canvas');domCv.width=domCv.height=2;
+const domTex=new THREE.CanvasTexture(domCv);
+domTex.minFilter=domTex.magFilter=THREE.LinearFilter;domTex.generateMipmaps=false;
+let snapOf=-1,domDirty=true,xferOn=false,snapTimer=0;
+
+const VS_Q='void main(){gl_Position=vec4(position.xy,0.,1.);}';
+/* baked once: the fracture field. log-polar voronoi around the screen centre —
+   R = px to a main crack, G = px to a fine crack, B = shard id, A = shard distance from centre */
+const FS_CRACK=`
+uniform vec2 uRes;
+vec2 hash2(vec2 p){p=vec2(dot(p,vec2(127.1,311.7)),dot(p,vec2(269.5,183.3)));return fract(sin(p)*43758.5453);}
+float hash1(vec2 p){return fract(sin(dot(p,vec2(41.3,289.1)))*43758.5453);}
+float n1(float x){float i=floor(x),f=fract(x);f=f*f*(3.-2.*f);
+  return mix(hash1(vec2(i,3.1)),hash1(vec2(i+1.,3.1)),f);}
+vec4 vor(vec2 x,float wrap){
+  vec2 n=floor(x),f=fract(x),mg=vec2(0.),mr=vec2(0.),mo=vec2(0.);float md=8.;
+  for(int j=-1;j<=1;j++)for(int i=-1;i<=1;i++){
+    vec2 g=vec2(float(i),float(j));vec2 c=n+g;c.x=mod(c.x,wrap);
+    vec2 o=hash2(c);vec2 r=g+o-f;float d=dot(r,r);
+    if(d<md){md=d;mr=r;mg=g;mo=o;}
+  }
+  md=8.;
+  for(int j=-2;j<=2;j++)for(int i=-2;i<=2;i++){
+    vec2 g=mg+vec2(float(i),float(j));vec2 c=n+g;c.x=mod(c.x,wrap);
+    vec2 o=hash2(c);vec2 r=g+o-f;
+    if(dot(mr-r,mr-r)>.00001)md=min(md,dot(.5*(mr+r),normalize(r-mr)));
+  }
+  vec2 id=n+mg;id.x=mod(id.x,wrap);
+  return vec4(md,id,n.y+mg.y+mo.y);
+}
+void main(){
+  vec2 d=gl_FragCoord.xy-uRes*.5;float H=uRes.y;
+  float r=length(d)+.5;float u=atan(d.y,d.x)/6.2831853+.5;float lr=log(r/H+.02);
+  const float N1=16.,N2=42.;
+  float M1=N1/6.2831853,M2=N2/6.2831853;
+  vec4 v1=vor(vec2(u*N1,lr*M1),N1);
+  vec4 v2=vor(vec2(u*N2+.37,lr*M2+1.3),N2);
+  float re=r+H*.02;
+  float p1=v1.x*re/M1,p2=v2.x*re/M2;
+  const float NR=14.;
+  float sa=u*NR,sk=mod(floor(sa+.5),NR);
+  float sw=(n1(lr*2.4+sk*17.3)-.5)*.46;
+  float sd=abs(fract(sa-sw+.5)-.5)*r*6.2831853/NR;
+  p1=min(p1,mix(1000.,sd,step(.25,hash1(vec2(sk,5.7)))));
+  float rc=H*(exp(v1.w/M1)-.02);
+  gl_FragColor=vec4(clamp(p1/12.,0.,1.),clamp(p2/8.,0.,1.),hash1(v1.yz),clamp(rc/length(uRes),0.,1.));
+}`;
+const FS_POST=`
+uniform sampler2D tA,tB,tC,tD;
+uniform vec2 uRes;
+uniform float uP,uT,uDom,uPx;
+uniform vec3 uAcc;
+float h21(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+vec3 worldA(vec2 uv){                        /* the current world with its HTML layer on top */
+  vec3 a=texture2D(tA,uv).rgb;
+  if(uDom>.5){vec4 d=texture2D(tD,uv);a=mix(a,d.rgb,d.a);}
+  return a;
+}
+float fly(vec4 k,float G){return clamp(G*3.3-k.a*4.-k.b*.3,0.,1.);}   /* centre shards leave first */
+void main(){
+  vec2 p=gl_FragCoord.xy,c=uRes*.5,uv=p/uRes;
+  vec3 col;
+  if(uP<.0005){
+    vec2 dv=uv-.5;float d2=dot(dv,dv);         /* at rest: a little colour fringe toward the edges */
+    col=vec3(texture2D(tA,uv+dv*d2*.014).r,texture2D(tA,uv).g,texture2D(tA,uv-dv*d2*.014).b);
+  }else{
+    float diag=length(uRes);
+    float G=clamp((uP-.5)/.5,0.,1.);
+    float front=diag*.62*smoothstep(.02,.5,uP);          /* cracks crawl outward as you push */
+    vec4 ks=texture2D(tC,uv);
+    float sS=fly(ks,G);
+    vec2 pi=p-c;float ri=length(pi)+.001;
+    float w=30.*uPx;
+    float rev=smoothstep(front+w,front-w,ri)*step(.5,front);
+    float dL=ks.r*12.,dF=ks.g*8.;
+    float lL=(1.-smoothstep(.5*uPx,1.5*uPx,dL))*rev;
+    float lF=(1.-smoothstep(.25*uPx,.9*uPx,dF))*rev;
+    float push=smoothstep(.15,.5,uP);
+    vec2 rf=(vec2(fract(ks.b*57.31),fract(ks.b*113.7))-.5)*12.*uPx*rev*push;
+    vec2 ca=(pi/ri)*1.5*uPx*rev*push/uRes;
+    vec2 ur=(p+rf)/uRes;
+    vec3 a=vec3(worldA(ur+ca).r,worldA(ur).g,worldA(ur-ca).b);
+    a*=1.+(fract(ks.b*29.7)-.5)*.18*rev*push;
+    a=mix(a,vec3(0.),max(lL,lF*.5)*.8);
+    a+=uAcc*(lL+lF*.5)*(.3+1.6*push);                    /* the next dimension leaking through */
+    float fg=(ri-front)/(70.*uPx);
+    a+=vec3(1.)*exp(-fg*fg)*(lL+lF*.6)*step(.5,front)*(1.-G)*1.2;
+    vec3 b=texture2D(tB,uv).rgb;
+    vec3 under=mix(a,b,smoothstep(0.,.03,sS));           /* where a shard has left, the next world shows */
+    /* is a shard already flying toward the camera in front of this pixel? */
+    vec4 kf=texture2D(tC,vec2(.5));
+    float s=fly(kf,G),m=1.+pow(s,2.2)*5.;
+    vec2 q=c+pi/m;
+    for(int i=0;i<3;i++){kf=texture2D(tC,q/uRes);s=fly(kf,G);m=1.+pow(s,2.2)*5.;q=c+pi/m;}
+    kf=texture2D(tC,q/uRes);
+    float okF=(1.-smoothstep(.01,.06,abs(fly(kf,G)-s)))*step(.004,s);
+    float aF=okF*(1.-smoothstep(.45,1.,s));
+    vec3 f=worldA(q/uRes);
+    float eL=1.-smoothstep(.5*uPx,2.2*uPx,kf.r*12.*m);
+    f=f*(1.+s*.9)+uAcc*(eL*.9+s*.25);
+    col=mix(under,f,aF);
+  }
+  vec3 glow=vec3(0.);                                    /* bright things bleed */
+  if(uP>.55){
+    for(int i=0;i<10;i++){float fi=float(i);float an=fi*.6283;
+      vec2 o=vec2(cos(an),sin(an))*(3.+mod(fi,2.)*7.)*uPx*1.5/uRes;
+      glow+=max(texture2D(tB,uv+o).rgb-.55,0.);}
+  }else{
+    for(int i=0;i<10;i++){float fi=float(i);float an=fi*.6283;
+      vec2 o=vec2(cos(an),sin(an))*(3.+mod(fi,2.)*7.)*uPx*1.5/uRes;
+      glow+=max(texture2D(tA,uv+o).rgb-.55,0.);}
+  }
+  col+=glow*.17;
+  vec2 dv=uv-.5;col*=1.-dot(dv,dv)*.5;
+  col+=(h21(p+fract(uT)*91.7)-.5)*.03;
+  gl_FragColor=vec4(col,1.);
+}`;
+const postCam=new THREE.OrthographicCamera(-1,1,1,-1,0,1);
+const quad=new THREE.PlaneGeometry(2,2);
+const crkMat=new THREE.ShaderMaterial({uniforms:{uRes:{value:new THREE.Vector2()}},
+  vertexShader:VS_Q,fragmentShader:FS_CRACK,depthTest:false,depthWrite:false});
+const postMat=new THREE.ShaderMaterial({uniforms:{
+    tA:{value:rtA.texture},tB:{value:rtB.texture},tC:{value:rtC.texture},tD:{value:domTex},
+    uRes:{value:new THREE.Vector2()},uP:{value:0},uT:{value:0},uDom:{value:0},uPx:{value:1},
+    uAcc:{value:new THREE.Color(ACC[1])}},
+  vertexShader:VS_Q,fragmentShader:FS_POST,depthTest:false,depthWrite:false});
+const crkScene=new THREE.Scene(),postScene=new THREE.Scene();
+[[crkScene,crkMat],[postScene,postMat]].forEach(a=>{const m=new THREE.Mesh(quad,a[1]);
+  m.frustumCulled=false;a[0].add(m)});
+function sizePost(){
+  renderer.getDrawingBufferSize(dbs);
+  rtA.setSize(dbs.x,dbs.y);rtB.setSize(dbs.x,dbs.y);rtC.setSize(dbs.x,dbs.y);
+  postMat.uniforms.uRes.value.copy(dbs);
+  postMat.uniforms.uPx.value=dbs.y/innerHeight;
+  crkMat.uniforms.uRes.value.copy(dbs);
+  renderer.setRenderTarget(rtC);renderer.render(crkScene,postCam);renderer.setRenderTarget(null);
+  snapOf=-1;
+}
+sizePost();
+
+/* paint the active dimension's HTML into a texture: boxes, borders, glyphs at their laid-out
+   positions, text glow, and ::before prefixes. done while idle, so a jump never waits for it */
+function snapDom(i){
+  const sec=sections[i];if(!sec)return;
+  const W=innerWidth,H=innerHeight,ds=Math.min(PR,1.5);
+  domCv.width=Math.round(W*ds);domCv.height=Math.round(H*ds);
+  const x=domCv.getContext('2d');x.setTransform(ds,0,0,ds,0,0);x.clearRect(0,0,W,H);
+  const rng=document.createRange();
+  const box=(l,t,w,h,r)=>{x.beginPath();
+    if(r>0&&x.roundRect)x.roundRect(l,t,w,h,Math.max(0,Math.min(r,w/2,h/2)));else x.rect(l,t,w,h)};
+  const clear=v=>!v||v==='transparent'||v==='rgba(0, 0, 0, 0)';
+  function font(cs){x.font=cs.fontStyle+' '+cs.fontWeight+' '+cs.fontSize+' '+cs.fontFamily;
+    const m=x.measureText('Hg'),fs=parseFloat(cs.fontSize);
+    return[m.fontBoundingBoxAscent||fs*.92,m.fontBoundingBoxDescent||fs*.24,fs]}
+  function glowOn(cs,fs){
+    const sh=cs.textShadow;if(!sh||sh==='none'||fs<20)return;
+    const m=sh.match(/(rgba?\([^)]+\))\s+-?[\d.]+px\s+-?[\d.]+px\s+([\d.]+)px/);
+    if(m){x.shadowColor=m[1];x.shadowBlur=parseFloat(m[2])*ds*.8}
+  }
+  function text(n,cs,o){
+    const s=n.nodeValue;if(!s||!s.trim())return;
+    x.globalAlpha=o;x.fillStyle=cs.color;
+    const f=font(cs);glowOn(cs,f[2]);
+    for(let k=0;k<s.length;k++){
+      const code=s.charCodeAt(k);
+      if(code===32||code===10||code===9||code===160)continue;
+      const end=(code>=0xD800&&code<=0xDBFF)?k+2:k+1;
+      rng.setStart(n,k);rng.setEnd(n,end);
+      const r=rng.getBoundingClientRect();
+      if(r.width>0&&r.bottom>0&&r.top<H&&r.right>0&&r.left<W)
+        x.fillText(s.slice(k,end),r.left,r.top+(r.height-f[0]-f[1])/2+f[0]);
+      k=end-1;
+    }
+    x.shadowBlur=0;x.shadowColor='transparent';
+  }
+  function prefix(e,o){                         /* "$ ", "◉ " and friends live in ::before */
+    const ps=getComputedStyle(e,'::before'),c=ps.content;
+    if(!c||c==='none'||c==='normal'||c.length<3)return;
+    const str=c.slice(1,-1);if(!str.trim())return;
+    const tw=document.createTreeWalker(e,NodeFilter.SHOW_TEXT);let n;
+    while((n=tw.nextNode())){
+      const k=n.nodeValue.search(/\S/);if(k<0)continue;
+      rng.setStart(n,k);rng.setEnd(n,k+1);const r=rng.getBoundingClientRect();
+      if(!r.width)continue;
+      x.globalAlpha=o;x.fillStyle=ps.color;const f=font(ps);
+      x.fillText(str,r.left-x.measureText(str).width,r.top+(r.height-f[0]-f[1])/2+f[0]);
+      return;
+    }
+  }
+  function el(e,op){
+    if(e.id==='thid')return;
+    const cs=getComputedStyle(e);
+    if(cs.display==='none'||cs.visibility==='hidden')return;
+    const o=op*(parseFloat(cs.opacity)||0);
+    if(o<.02)return;
+    const b=e.getBoundingClientRect();
+    const clip=cs.overflowX!=='visible'||cs.overflowY!=='visible';
+    const vis=b.bottom>0&&b.top<H&&b.right>0&&b.left<W&&b.width>0&&b.height>0;
+    if(!vis&&clip)return;
+    const br=parseFloat(cs.borderTopLeftRadius)||0;
+    if(vis){
+      x.globalAlpha=o;
+      if(!clear(cs.backgroundColor)){x.fillStyle=cs.backgroundColor;box(b.left,b.top,b.width,b.height,br);x.fill()}
+      const bt=parseFloat(cs.borderTopWidth)||0,bR=parseFloat(cs.borderRightWidth)||0,
+        bb=parseFloat(cs.borderBottomWidth)||0,bl=parseFloat(cs.borderLeftWidth)||0;
+      if(bt&&bt===bR&&bt===bb&&bt===bl){
+        x.strokeStyle=cs.borderTopColor;x.lineWidth=bt;
+        box(b.left+bt/2,b.top+bt/2,b.width-bt,b.height-bt,br-bt/2);x.stroke();
+      }else{
+        if(bt){x.fillStyle=cs.borderTopColor;x.fillRect(b.left,b.top,b.width,bt)}
+        if(bb){x.fillStyle=cs.borderBottomColor;x.fillRect(b.left,b.bottom-bb,b.width,bb)}
+        if(bl){x.fillStyle=cs.borderLeftColor;x.fillRect(b.left,b.top,bl,b.height)}
+        if(bR){x.fillStyle=cs.borderRightColor;x.fillRect(b.right-bR,b.top,bR,b.height)}
+      }
+      prefix(e,o);
+    }
+    if(clip){x.save();box(b.left,b.top,b.width,b.height,br);x.clip()}
+    for(let n=e.firstChild;n;n=n.nextSibling){
+      if(n.nodeType===1)el(n,o);
+      else if(n.nodeType===3&&vis)text(n,cs,o);
+    }
+    if(clip)x.restore();
+  }
+  el(sec,1);
+  domTex.needsUpdate=true;snapOf=i;domDirty=false;
+}
+function queueSnap(ms){clearTimeout(snapTimer);
+  snapTimer=setTimeout(()=>{if(!xferOn&&dir===0)snapDom(cur)},ms)}
+
 /* ============ RENDER LOOP ============ */
 let fq=0,fsum=0,adapted=false;
+function placeCam(i,dz){
+  const c=worlds[i].cam;
+  camera.position.set(c.pos[0]+smx*3,c.pos[1]+smy*-1.6,c.pos[2]+dz);
+  camera.lookAt(c.look[0]+smx*2,c.look[1],c.look[2]);
+}
+function renderFrame(rdt){
+  const dt=rdt*timeScale;
+  const t=clock.elapsedTime;
+  smx+=(mx-smx)*.04;smy+=(my-smy)*.04;
+  if(fovPulse>.01){camera.fov=62+fovPulse*9;fovPulse*=.9;camera.updateProjectionMatrix()}
+  else if(camera.fov!==62){camera.fov=62;camera.updateProjectionMatrix()}
+  const ek=Math.min(1,(t-entryT)/1.1),dolly=(1-Math.pow(ek,3))*16;
+  const trans=dir!==0&&tp>.0005;
+  const G=Math.max(0,(tp-.5)/.5);
+  /* the world you are in — the camera leans into the glass as it cracks */
+  const wa=worlds[cur];
+  placeCam(cur,dolly-(trans?tp*9:0));
+  wa.update(t,dt);
+  renderer.setRenderTarget(rtA);renderer.render(wa.scene,camera);
+  /* the world behind the glass, rushing up to meet you */
+  if(trans){
+    const wb=worlds[nextDim];
+    placeCam(nextDim,(1-G)*30);
+    wb.update(t,dt);
+    renderer.setRenderTarget(rtB);renderer.render(wb.scene,camera);
+  }
+  renderer.setRenderTarget(null);
+  const u=postMat.uniforms;
+  u.uP.value=trans?tp:0;u.uT.value=t;
+  u.uDom.value=(xferOn&&snapOf===cur)?1:0;
+  if(trans)u.uAcc.value.set(ACC[nextDim]);
+  renderer.render(postScene,postCam);
+}
 function animate(){
   requestAnimationFrame(animate);
   const rdt=Math.min(clock.getDelta(),.05);
   /* adaptive quality — if the first seconds run slow, drop pixel ratio once */
   if(!adapted){fq++;fsum+=rdt;
-    if(fq===150){if(fsum/fq>.03&&PR>1.1){PR=1;renderer.setPixelRatio(1)}adapted=true}}
+    if(fq===150){if(fsum/fq>.03&&PR>1.1){PR=1;renderer.setPixelRatio(1);sizePost()}adapted=true}}
   engineTick(rdt*1000);
-  const dt=rdt*timeScale;
-  const t=clock.elapsedTime;
-  smx+=(mx-smx)*.04;smy+=(my-smy)*.04;
-
-  const w=worlds[renderWorld],c=w.cam;
-  const ek=Math.min(1,(t-entryT)/1.1);
-  const dolly=(1-Math.pow(ek,3))*16;
-  const o=splitOn?Math.max(0,(tp-MID)/(1-MID)):0;
-  const rush=splitOn?(1-o)*30:0;
-  camera.position.x=c.pos[0]+smx*3;
-  camera.position.y=c.pos[1]+smy*-1.6;
-  camera.position.z=c.pos[2]+dolly+rush;
-  camera.lookAt(c.look[0]+smx*2,c.look[1],c.look[2]);
-  if(fovPulse>.01){camera.fov=62+fovPulse*9;fovPulse*=.9;camera.updateProjectionMatrix()}
-  else if(camera.fov!==62){camera.fov=62;camera.updateProjectionMatrix()}
-
-  w.update(t,dt);
-  renderer.render(w.scene,camera);
+  renderFrame(rdt);
 }
 animate();
+/* debug: render one exact moment of a jump (progress v toward dimension n) */
+window.__mv={shot(v,n){dir=n>cur?1:-1;nextDim=n;tp=v;lastInput=performance.now();
+  if(v>=MID-.03)enterMid();else exitMid();applyVisual();renderFrame(0)},
+  rest(){tp=0;dir=0;exitMid();applyVisual();renderFrame(0)}};
 
 /* ============ INTRO ============ */
 const intro=document.getElementById('intro'),term=document.getElementById('term'),
@@ -1007,7 +1257,7 @@ function finishIntro(){
   if(finished)return;finished=true;skipped=true;
   intro.classList.add('warp');
   document.body.classList.add('loaded');
-  setChrome(0);activate(0);snapCam(0);
+  setChrome(0);activate(0);snapCam(0);queueSnap(2000);
   setTimeout(()=>{intro.style.display='none';busy=false},1000);
 }
 document.getElementById('skipBtn').addEventListener('click',finishIntro);
